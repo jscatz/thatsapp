@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket Client UI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        #log {
+            width: 90%;
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        #controls {
+            display: flex;
+            gap: 10px;
+            width: 90%;
+        }
+        #message {
+            flex-grow: 1;
+        }
+    </style>
+</head>
+<body>
+    <h1>Socket Client</h1>
+    <input type="text" id="host" placeholder="HOST (e.g., ws://127.0.0.1:9009)">
+    <button onclick="connectSocket()">Connect</button>
+    <div id="log"></div>
+    <div id="controls">
+        <input type="text" id="message" placeholder="Type a message...">
+        <button onclick="sendMessage()">Send</button>
+        <input type="file" id="fileInput">
+        <button onclick="sendFile()">Send File</button>
+    </div>
+
+    <script>
+        let socket;
+
+        function logMessage(message) {
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += message + '<br>';
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function connectSocket() {
+            const host = document.getElementById('host').value.trim();
+            if (!host.startsWith("ws://") && !host.startsWith("wss://")) {
+                alert("Please enter a valid WebSocket URL (e.g., ws://127.0.0.1:9009)");
+                return;
+            }
+
+            socket = new WebSocket(host);
+
+            socket.onopen = function() {
+                logMessage("Connected to " + host);
+            };
+
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.type === 'text') {
+                    logMessage("Server: " + data.content);
+                } else if (data.type === 'file') {
+                    logMessage(`Received file: ${data.filename}`);
+
+                    // Create a download link and trigger the download
+                    const link = document.createElement('a');
+                    link.href = 'data:application/octet-stream;base64,' + data.content;
+                    link.download = data.filename;
+                    link.textContent = `Download ${data.filename}`;
+
+                    // Automatically click the link to trigger the download
+                    document.body.appendChild(link); // Append link to the DOM temporarily
+                    link.click(); // Programmatically click the link
+                    document.body.removeChild(link); // Remove the link after clicking
+                }
+            };
+
+            socket.onclose = function(event) {
+                logMessage("Disconnected from server");
+                if (event.code !== 1000) { // 1000 means normal closure
+                    logMessage("Unexpected disconnection with code: " + event.code);
+                }
+            };
+
+            socket.onerror = function(error) {
+                logMessage("Connection error: " + (error.message || "No additional information"));
+            };
+        }
+
+        function sendMessage() {
+            const message = document.getElementById('message').value;
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const data = JSON.stringify({ type: 'text', content: message });
+                socket.send(data);
+                logMessage("You: " + message);
+                document.getElementById('message').value = '';
+            } else {
+                logMessage("Connection is closed. Please reconnect.");
+            }
+        }
+
+        function sendFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (file && socket && socket.readyState === WebSocket.OPEN) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const fileData = event.target.result.split(',')[1]; // Get base64 data
+                    const data = JSON.stringify({
+                        type: 'file',
+                        filename: file.name,
+                        content: fileData
+                    });
+                    socket.send(data);
+                    logMessage(`Sent file: ${file.name}`);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                logMessage("Please select a file or ensure the connection is open.");
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket Client UI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start; /* Changed from center to flex-start */
+            height: 100vh;
+            margin: 0;
+            background-size: 32px;
+            background-image: url("background.png");
+        }
+        /* Header styles */
+        header {
+            width: 100%;
+            background-color: #1f4570; /* Black background */
+            display: flex;
+            align-items: center;
+            padding: 10px 20px;
+            box-sizing: border-box;
+        }
+        #logo {
+            width: 200px;
+            height: auto;
+        }
+        /* Adjusted existing elements to account for the header */
+        #host-container, #log, #controls {
+            width: 90%;
+            max-width: 800px;
+        }
+        #host-container {
+            margin-top: 20px; /* Space below the header */
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        /* Rounded styles for HOST input and Connect button */
+        #host {
+            flex-grow: 1; /* Makes the input take up remaining space */
+            border-radius: 20px; /* Increased to make it more rounded */
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+        #host-container button {
+            border-radius: 20px; /* Increased to match the rounded style */
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #5b9bd5;
+            color: white;
+            border: none;
+            transition: background-color 0.3s;
+        }
+        #host-container button:hover {
+            background-color: #4a8ac1;
+        }
+        #log {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            background-color: #76a5db;
+        }
+        #controls {
+            display: flex;
+            gap: 10px;
+            color: #1d2326;
+            margin-bottom: 20px; /* Space at the bottom */
+        }
+        #message, #fileInput, button {
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+        #message {
+            flex-grow: 1;
+        }
+        button {
+            cursor: pointer;
+            background-color: #5b9bd5;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #4a8ac1;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <img id="logo" src="logo.svg" alt="thatsapp">
+    </header>
+    <div id="host-container">
+        <input type="text" id="host" placeholder="HOST (e.g., ws://127.0.0.1:9009)">
+        <button onclick="connectSocket()">Connect</button>
+    </div>
+    <div id="log"></div>
+    <div id="controls">
+        <input type="text" id="message" placeholder="Type a message...">
+        <button onclick="sendMessage()">Send</button>
+        <input type="file" id="fileInput">
+        <button onclick="sendFile()">Send File</button>
+    </div>
+
+    <script>
+        let socket;
+
+        function logMessage(message) {
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += message + '<br>';
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function connectSocket() {
+            const host = document.getElementById('host').value.trim();
+            if (!host.startsWith("ws://") && !host.startsWith("wss://")) {
+                alert("Please enter a valid WebSocket URL (e.g., ws://127.0.0.1:9009)");
+                return;
+            }
+
+            socket = new WebSocket(host);
+
+            socket.onopen = function() {
+                logMessage("Connected to " + host);
+            };
+
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.type === 'text') {
+                    logMessage("Server: " + data.content);
+                } else if (data.type === 'file') {
+                    logMessage(`Received file: ${data.filename}`);
+
+                    const link = document.createElement('a');
+                    link.href = 'data:application/octet-stream;base64,' + data.content;
+                    link.download = data.filename;
+                    link.textContent = `Download ${data.filename}`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            };
+
+            socket.onclose = function(event) {
+                logMessage("Disconnected from server");
+                if (event.code !== 1000) {
+                    logMessage("Unexpected disconnection with code: " + event.code);
+                }
+            };
+
+            socket.onerror = function(error) {
+                logMessage("Connection error: " + (error.message || "No additional information"));
+            };
+        }
+
+        function sendMessage() {
+            const message = document.getElementById('message').value;
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const data = JSON.stringify({ type: 'text', content: message });
+                socket.send(data);
+                logMessage("You: " + message);
+                document.getElementById('message').value = '';
+            } else {
+                logMessage("Connection is closed. Please reconnect.");
+            }
+        }
+
+        function sendFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (file && socket && socket.readyState === WebSocket.OPEN) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const fileData = event.target.result.split(',')[1];
+                    const data = JSON.stringify({
+                        type: 'file',
+                        filename: file.name,
+                        content: fileData
+                    });
+                    socket.send(data);
+                    logMessage(`Sent file: ${file.name}`);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                logMessage("Please select a file or ensure the connection is open.");
+            }
+        }
+    </script>
+</body>
+</html>
